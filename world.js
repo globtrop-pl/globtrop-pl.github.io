@@ -118,5 +118,9 @@
     return { meta: m, cc: loc.cc, biome, terrain, sun, doy, hour, weather, dirt, heading, near, urban: loc.urban, town: loc.town, lat: loc.lat, lon: loc.lon, seed: loc.seed };
   }
 
-  root.GTWorld = { countries, byCode, countryAt, inCountry, towns, labels, playable, nearbyTowns, pickLocation, envFor, decodeLine, META, NEAR_REGIONS };
+  function setLang(l) {
+    let dn = null; try { dn = new Intl.DisplayNames([l], { type: 'region' }); } catch (e) { return; }
+    for (const c of countries) if (c.code) { try { const n = dn.of(c.code); if (n && n !== c.code) c.name = n; } catch (e) { } }
+  }
+  root.GTWorld = { setLang, countries, byCode, countryAt, inCountry, towns, labels, playable, nearbyTowns, pickLocation, envFor, decodeLine, META, NEAR_REGIONS };
 })(this);

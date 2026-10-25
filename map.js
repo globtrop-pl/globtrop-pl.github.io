@@ -25,7 +25,7 @@
     for (const l of D.lakes) ring(lakes, W.decodeLine(l), true);
     for (const l of D.rivers) ring(rivers, W.decodeLine(l), false);
     for (const l of D.admin) ring(admin, W.decodeLine(l), false);
-    const labels = W.countries.filter(c => c.code).map(c => ({ name: c.name, x: mx(c.lx), y: my(c.ly), minK: c.area > 400 ? 0 : c.area > 60 ? 900 : c.area > 8 ? 2200 : 5000 }));
+    const labels = W.countries.filter(c => c.code).map(c => ({ c, x: mx(c.lx), y: my(c.ly), minK: c.area > 400 ? 0 : c.area > 60 ? 900 : c.area > 8 ? 2200 : 5000 }));
     const cities = W.labels.map(c => ({ name: c.n, x: mx(c.lon), y: my(c.lat), pop: c.pop }));
     PATHS = { land, borders, lakes, rivers, admin, labels, cities };
     return PATHS;
@@ -117,7 +117,7 @@
         if (sx < -w || sx > this.w + w || sy < -h || sy > this.h + h) return false;
         g.lineWidth = 3; g.strokeStyle = halo; g.strokeText(txt, sx, sy); g.fillStyle = fill; g.fillText(txt, sx, sy); placed.push([sx, sy, w]); return true;
       };
-      for (const o of offs) for (const L of P.labels) { if (k < L.minK) continue; tryLabel(L.name, this.tx + (L.x + o) * k, this.ty + L.y * k, `600 ${k > 8000 ? 13 : 11}px "Figtree", system-ui, sans-serif`, '#5b4d5f', 'rgba(239,236,227,.9)'); }
+      for (const o of offs) for (const L of P.labels) { if (k < L.minK) continue; tryLabel(L.c.name, this.tx + (L.x + o) * k, this.ty + L.y * k, `600 ${k > 8000 ? 13 : 11}px "Figtree", system-ui, sans-serif`, '#5b4d5f', 'rgba(239,236,227,.9)'); }
       if (k > 3200) for (const o of offs) for (const C of P.cities) {
         if (k < 9000 && C.pop < 2000000) continue; if (k < 25000 && C.pop < 800000) continue;
         const sx = this.tx + (C.x + o) * k, sy = this.ty + C.y * k;
@@ -148,6 +148,7 @@
         }
       }
     }
+    redraw() { this.dirty = true; }
     destroy() { cancelAnimationFrame(this.raf); this.ro.disconnect(); this.cv.remove(); }
   }
   root.GTMap = GTMap; root.GTMapProj = { mx, my, unproj };
