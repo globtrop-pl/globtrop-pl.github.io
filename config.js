@@ -1,10 +1,16 @@
-// Globtrop – ustawienia. Uzupełnij i zapisz plik.
+// Globtrop – ustawienia.
 window.GLOBTROP_CONFIG = {
-  // 1) Klucz Google Maps (Maps JavaScript API). Wklej go między cudzysłowy:
+  // Klucz Google Maps (Maps JavaScript API)
   googleMapsKey: "AIzaSyCCMoLK4v03e6aXkZFOYEkvKBzKNKbIsv8",
 
-  // 2) (opcjonalnie) Gra ze znajomymi przez Firebase Realtime Database.
-  //    Wklej tu obiekt firebaseConfig ze swojej konsoli Firebase (instrukcja w README.md).
-  //    Zostaw null, jeśli na razie grasz solo i z botami.
-  firebase: null
+  // Gra ze znajomymi: Firebase Realtime Database
+  firebase: {
+    apiKey: "AIzaSyDJTSqRBhy_aSUe2y7QUEWMheg5-dZvT7w",
+    authDomain: "globtrop.firebaseapp.com",
+    databaseURL: "https://globtrop-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "globtrop",
+    storageBucket: "globtrop.firebasestorage.app",
+    messagingSenderId: "651264308723",
+    appId: "1:651264308723:web:f3ce4e443c4cc110dc0e86"
+  }
 };
