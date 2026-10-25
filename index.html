@@ -75,6 +75,8 @@ body.ingame #backdrop { display: none; }
 .panel { background: var(--panel); border-radius: 16px; padding: 20px; box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 14px; backdrop-filter: blur(6px); }
 .panel h2 { font-family: var(--f-display); font-size: 22px; margin: 0; font-weight: 800; }
 #joinRow { display: flex; gap: 8px; }
+.qpbtns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.qpbtns button { font-family: var(--f-mono); font-size: 17px; padding: 13px 0; }
 #joinRow input { text-transform: uppercase; font-family: var(--f-mono); letter-spacing: .12em; }
 #joinRow.off { opacity: .45; pointer-events: none; }
 .rooms { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -244,11 +246,23 @@ body.ingame #backdrop { display: none; }
           <div><b>NMPZ</b>Bez ruchu, obracania i zoomu.</div>
         </div>
       </div>
+      <div style="display:grid;gap:18px;min-width:0">
+      <div class="panel qp">
+        <h2>Szybka gra</h2>
+        <p class="muted" style="margin:0">Dołącz do losowych graczy online. Jeśli w 45 sekund nikt się nie znajdzie, wolne miejsca zajmą boty.</p>
+        <div class="seg" role="radiogroup" aria-label="Tryb szybkiej gry">
+          <label><input type="radio" name="qmv" value="move"><span>Ruch</span></label>
+          <label><input type="radio" name="qmv" value="nomove"><span>No Move</span></label>
+          <label><input type="radio" name="qmv" value="nmpz"><span>NMPZ</span></label>
+        </div>
+        <div class="qpbtns"><button data-qp="1">1v1</button><button data-qp="2">2v2</button><button data-qp="3">3v3</button><button data-qp="4">4v4</button></div>
+      </div>
       <div class="panel">
         <h2>Graj ze znajomymi</h2>
         <div id="joinRow"><input id="joinCode" type="text" maxlength="8" placeholder="KOD POKOJU" autocomplete="off" aria-label="Kod pokoju"><button id="joinBtn">Dołącz</button></div>
         <div id="openRooms"></div>
         <p class="muted" style="margin:0">Załóż mecz drużynowy, wybierz „Pokój dla znajomych” i podaj im kod.</p>
+      </div>
       </div>
     </div>
   </div></div>
@@ -263,6 +277,10 @@ body.ingame #backdrop { display: none; }
       <label><input type="radio" name="mv" value="move"><span>Ruch<small>jazda, obrót, zoom</small></span></label>
       <label><input type="radio" name="mv" value="nomove"><span>No Move<small>obrót i zoom</small></span></label>
       <label><input type="radio" name="mv" value="nmpz"><span>NMPZ<small>tylko patrzysz</small></span></label>
+    </div></div>
+    <div class="opt" id="rivalRow"><span class="label">Przeciwnik</span><div class="seg">
+      <label><input type="radio" name="rival" value="none"><span>Bez przeciwnika<small>sam na punkty</small></span></label>
+      <label><input type="radio" name="rival" value="bot"><span>Bot<small>wybierz jego poziom niżej</small></span></label>
     </div></div>
     <div class="opt" id="sizeRow"><span class="label">Drużyny</span><div class="seg">
       <label><input type="radio" name="size" value="1"><span>1v1</span></label>

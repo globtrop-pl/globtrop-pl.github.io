@@ -8,7 +8,8 @@
 
   // ------------------------------------------------------------ local prefs
   const store = { get(k, d) { try { const v = localStorage.getItem('globtrop.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('globtrop.' + k, JSON.stringify(v)); } catch (e) { } } };
-  const prefs = Object.assign({ nick: '', mv: 'move', tl: 0, size: 2, lvl: 5 }, store.get('prefs', {}));
+  const prefs = Object.assign({ nick: '', mv: 'move', tl: 0, size: 2, lvl: 5, rival: 'none', qmv: 'move' }, store.get('prefs', {}));
+  const QP_WAIT = 45000; // quick play: seconds to wait for random players before bots fill in
   function savePrefs() { store.set('prefs', prefs); }
 
   // ------------------------------------------------------------ net
@@ -28,7 +29,7 @@
   function lobbyAnnounce() {
     if (!Net.room) return;
     const S = G.S;
-    const host = S && S.mode === 'team' && G.isHost && S.ph !== 'end' ? { code: S.code, size: S.size, n: S.pl.filter(p => !p.b).length, max: S.size * 2, ph: S.ph, mv: S.mv } : null;
+    const host = S && S.mode === 'team' && G.isHost && !G.local && S.ph !== 'end' ? { code: S.code, size: S.size, n: S.pl.filter(p => !p.b).length, max: S.size * 2, ph: S.ph, mv: S.mv, pub: !!S.pub } : null;
     Net.room.presence({ nick: nick(), host }).catch(() => { });
   }
 
@@ -39,7 +40,7 @@
   function newCode() { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 5; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
   function newSeed() { return (Math.random() * 4294967295) >>> 0; }
   function freshState(opts) {
-    return { v: 1, code: opts.code || newCode(), mode: opts.mode, size: opts.size || 1, mv: opts.mv, tl: opts.tl, lvl: opts.lvl, host: Net.me, ph: 'lobby', pl: [], hp: [HP, HP], r: 0, seed: 0, rs: 0, dl: 0, now: now(), g: {}, res: null, hist: [], tot: {}, win: null, nextAt: 0 };
+    return { v: 1, pub: !!opts.pub, qs: opts.pub ? now() + QP_WAIT : 0, code: opts.code || newCode(), mode: opts.mode, size: opts.size || 1, mv: opts.mv, tl: opts.tl, lvl: opts.lvl, host: Net.me, ph: 'lobby', pl: [], hp: [HP, HP], r: 0, seed: 0, rs: 0, dl: 0, now: now(), g: {}, res: null, hist: [], tot: {}, win: null, nextAt: 0 };
   }
   function me() { return G.S && G.S.pl.find(p => p.id === Net.me); }
   function teamOf(id) { const p = G.S.pl.find(q => q.id === id); return p ? p.t : 0; }
@@ -84,10 +85,24 @@
   function hostTick() {
     const S = G.S; if (!S || !G.isHost) return;
     let changed = false; const t = now();
-    if (S.ph === 'lobby' && !G.local) changed = syncLobbyPlayers() || changed;
+    if (S.ph === 'lobby' && !G.local) {
+      changed = syncLobbyPlayers() || changed;
+      if (S.pub) {
+        const humans = S.pl.filter(p => !p.b).length;
+        // two people searching at once: the lone host moves into the other open room
+        if (humans === 1 && t > (G.mergeAt || 0)) {
+          G.mergeAt = t + 2000;
+          const other = openRooms(S.size, S.mv).find(r => r.code !== S.code && (r.n > 1 || r.code < S.code));
+          if (other) { joinRoom(other.code); return; }
+        }
+        if (humans >= S.size * 2 || t >= S.qs) { fillBots(true); hostStart(); return; }
+      }
+    }
     if (S.ph === 'round') {
       // human guesses from presence
       if (!G.local) for (const p of Net.gamePeers) { const gs = p.presence && p.presence.guess; if (gs && gs.r === S.r && gs.s === S.seed && S.pl.find(q => q.id === p.peer)) changed = registerGuess(p.peer, +gs.la, +gs.lo) || changed; }
+      // solo: once you have guessed, the bot rival answers straight away
+      if (S.mode === 'solo' && S.pl.every(p => p.b || S.g[p.id])) for (const id in G.botDue) G.botDue[id] = Math.min(G.botDue[id], t);
       // bot guesses
       for (const id in G.botDue) if (t >= G.botDue[id] && !S.g[id]) { const b = S.pl.find(p => p.id === id); const loc = S.loc; const [la, lo] = Bots.guess(b.b, loc, S.seed ^ GT.hashStr(id) ^ 0x777); changed = registerGuess(id, la, lo) || changed; }
       const allIn = S.pl.every(p => S.g[p.id] || (!p.b && !present(p.id)));
@@ -145,13 +160,13 @@
     }
     return changed;
   }
-  function fillBots() {
+  function fillBots(silent) {
     const S = G.S; let i = 0; const used = new Set(S.pl.map(p => p.nk));
     for (const t of [0, 1]) while (S.pl.filter(p => p.t === t).length < S.size) {
       let nm; do { nm = Bots.NAMES[(Math.random() * Bots.NAMES.length) | 0]; } while (used.has(nm) && used.size < Bots.NAMES.length); used.add(nm);
       S.pl.push({ id: 'b' + (Date.now() % 100000) + '_' + (i++), nk: nm, t, b: S.lvl });
     }
-    publish();
+    if (!silent) publish();
   }
   function clearBots() { G.S.pl = G.S.pl.filter(p => !p.b); publish(); }
 
@@ -161,11 +176,23 @@
     G.local = true; G.isHost = true; Net.me = Net.room ? Net.me : 'me';
     G.S = freshState({ mode: 'solo', mv: prefs.mv, tl: prefs.tl, lvl: prefs.lvl });
     G.S.pl = [{ id: Net.me, nk: nick(), t: 0, b: 0 }];
+    if (prefs.rival === 'bot') G.S.pl.push({ id: 'b_rival', nk: Bots.NAMES[(Math.random() * Bots.NAMES.length) | 0], t: 1, b: prefs.lvl });
     startHostLoop(); hostStart();
   }
-  function createTeamGame(withFriends) {
+  function openRooms(size, mv) {
+    return Net.lobbyPeers.filter(p => !p.sameTab && p.presence && p.presence.host).map(p => p.presence.host)
+      .filter(h => h.pub && h.ph === 'lobby' && h.size === size && h.mv === mv && h.n < h.max).sort((a, b) => b.n - a.n);
+  }
+  function quickPlay(size) {
+    if (!Net.room) { toast('Szybka gra wymaga połączenia z Firebase (config.js).'); return; }
+    readQuick();
+    const room = openRooms(size, prefs.qmv)[0];
+    if (room) { joinRoom(room.code); return; }
+    createTeamGame(true, { pub: true, size, mv: prefs.qmv });
+  }
+  function createTeamGame(withFriends, o = {}) {
     leaveGame();
-    G.S = freshState({ mode: 'team', size: prefs.size, mv: prefs.mv, tl: prefs.tl, lvl: prefs.lvl });
+    G.S = freshState({ mode: 'team', size: o.size || prefs.size, mv: o.mv || prefs.mv, tl: prefs.tl, lvl: prefs.lvl, pub: !!o.pub });
     G.isHost = true; G.local = !(withFriends && Net.room);
     if (G.local) Net.me = Net.room ? Net.me : 'me';
     G.S.host = Net.me;
@@ -271,12 +298,13 @@
       hud.innerHTML = `${bars[0]}<div class="mid"><div class="rnd">Runda ${S.r}</div><div class="mult">×${multiplier(S.r).toFixed(1)}</div><div class="timer" id="timer"></div></div>${bars[1]}`;
     } else {
       hud.className = 'hud solo';
-      const tot = S.tot[Net.me] || 0;
-      hud.innerHTML = `<div class="stat"><span>Runda</span><b>${S.r} / ${SOLO_ROUNDS}</b></div><div class="stat"><span>Wynik</span><b>${tot.toLocaleString('pl-PL')}</b></div><div class="timer" id="timer"></div>`;
+      const tot = S.tot[Net.me] || 0; const bot = S.pl.find(p => p.b);
+      hud.innerHTML = `<div class="stat"><span>Runda</span><b>${S.r} / ${SOLO_ROUNDS}</b></div><div class="stat"><span>Ty</span><b>${tot.toLocaleString('pl-PL')}</b></div>${bot ? `<div class="stat"><span>${esc(bot.nk)} · bot ${bot.b}</span><b>${(S.tot[bot.id] || 0).toLocaleString('pl-PL')}${S.g[bot.id] ? ' ✓' : ''}</b></div>` : ''}<div class="timer" id="timer"></div>`;
     }
     tickTimer();
   }
   function tickTimer() {
+    const qt = $('#qpTimer'); if (qt && G.S && G.S.pub && G.S.ph === 'lobby') qt.textContent = fmtTime(G.S.qs - hostNow());
     const S = G.S, el = $('#timer'); if (!el || !S) return;
     if (S.ph === 'round' && S.dl) { const left = S.dl - hostNow(); el.textContent = fmtTime(left); el.classList.toggle('urgent', left < 10500); el.hidden = false; }
     else el.hidden = true;
@@ -288,7 +316,7 @@
     const S = G.S; const loc = S.loc; const ov = $('#resultOv'); ov.hidden = false;
     if (!G.bigMap) G.bigMap = new GTMap($('#resultMap'), {});
     const pins = [{ kind: 'target', lat: loc.lat, lon: loc.lon }], lines = [], pts = [[loc.lat, loc.lon]];
-    for (const p of S.pl) { const g = S.g[p.id]; if (!g) continue; const col = S.mode === 'team' ? TEAM[p.t].col : '#f5c84c'; pins.push({ lat: g[0], lon: g[1], color: col, label: p.nk }); lines.push({ a: [loc.lat, loc.lon], b: [g[0], g[1]], color: col }); pts.push([g[0], g[1]]); }
+    for (const p of S.pl) { const g = S.g[p.id]; if (!g) continue; const col = S.mode === 'team' ? TEAM[p.t].col : p.b ? '#3e8bff' : '#f5c84c'; pins.push({ lat: g[0], lon: g[1], color: col, label: p.nk }); lines.push({ a: [loc.lat, loc.lon], b: [g[0], g[1]], color: col }); pts.push([g[0], g[1]]); }
     G.bigMap.setPins(pins); G.bigMap.setLines(lines); requestAnimationFrame(() => { G.bigMap.resize(); G.bigMap.fit(pts, 70); });
     const where = `<div class="where"><span class="flagchip">${loc.cc}</span><div><b>${esc(countryName(loc.cc))}</b><small>okolice: ${esc(loc.town)}</small></div></div>`;
     let body = '';
@@ -304,6 +332,8 @@
     } else {
       const g = S.g[Net.me]; const km = g ? GT.haversine(loc.lat, loc.lon, g[0], g[1]) : null;
       body = `${where}<div class="soloRes"><div><span>Odległość</span><b>${km === null ? 'brak' : GT.fmtKm(km)}</b></div><div><span>Punkty</span><b>${g ? g[2].toLocaleString('pl-PL') : 0}</b><i style="width:${(g ? g[2] : 0) / 50}%"></i></div></div>`;
+      const bot = S.pl.find(p => p.b);
+      if (bot) { const bg = S.g[bot.id]; const bkm = bg ? GT.haversine(loc.lat, loc.lon, bg[0], bg[1]) : null; body += `<ol class="rows"><li class="t1"><span class="nm">${esc(bot.nk)} <em>bot ${bot.b} · ${Bots.LEVELS[bot.b - 1].name}</em></span><span class="km">${bkm === null ? 'brak' : GT.fmtKm(bkm)}</span><span class="pts">${bg ? bg[2].toLocaleString('pl-PL') : 0}</span></li></ol>`; }
     }
     $('#resultBody').innerHTML = body;
     const btn = $('#nextBtn');
@@ -319,8 +349,9 @@
       html = `<h2 class="${S.win >= 0 ? 't' + S.win : ''}">${S.win < 0 ? 'Remis' : `Wygrywają ${TEAM[S.win].name}`}</h2><p>${my ? (won ? 'Twoja drużyna wygrała.' : S.win < 0 ? 'Obie drużyny skończyły równo.' : 'Tym razem przegrana. Rewanż?') : ''}</p>
         <ul class="hist">${S.hist.map(h => `<li><span>Runda ${h[0]}</span><span>${esc(countryName(h[1]))}</span><span>${h[2] < 0 ? 'remis' : '−' + h[3].toLocaleString('pl-PL') + ' ' + TEAM[h[2]].name.toLowerCase()}</span></li>`).join('')}</ul>`;
     } else {
-      const tot = S.tot[Net.me] || 0;
-      html = `<h2>${tot.toLocaleString('pl-PL')} <small>/ 25 000</small></h2><p>${tot > 22000 ? 'Poziom mistrzowski.' : tot > 15000 ? 'Bardzo dobry wynik.' : tot > 8000 ? 'Nieźle. Następnym razem patrz na znaki i słupki.' : 'Spróbuj jeszcze raz: patrz na stronę ruchu, linie i pismo.'}</p>
+      const tot = S.tot[Net.me] || 0; const bot = S.pl.find(p => p.b);
+      const vs = bot ? (() => { const bt = S.tot[bot.id] || 0; return `<p><b>${tot > bt ? 'Wygrałeś z botem' : tot < bt ? 'Bot wygrał' : 'Remis z botem'}</b>: ${esc(bot.nk)} (poziom ${bot.b}) zdobył ${bt.toLocaleString('pl-PL')} pkt.</p>`; })() : '';
+      html = `<h2>${tot.toLocaleString('pl-PL')} <small>/ 25 000</small></h2>${vs}<p>${tot > 22000 ? 'Poziom mistrzowski.' : tot > 15000 ? 'Bardzo dobry wynik.' : tot > 8000 ? 'Nieźle. Następnym razem patrz na znaki i słupki.' : 'Spróbuj jeszcze raz: patrz na stronę ruchu, linie i pismo.'}</p>
         <ul class="hist">${S.hist.map(h => `<li><span>Runda ${h[0]}</span><span>${esc(countryName(h[1]))}</span><span>${h[2].toLocaleString('pl-PL')} pkt</span></li>`).join('')}</ul>`;
     }
     $('#endBody').innerHTML = html;
@@ -332,8 +363,8 @@
   function renderLobby() {
     const S = G.S; if (!S) return;
     $('#lobbyCode').textContent = S.code.toUpperCase();
-    $('#codeRow').hidden = G.local;
-    $('#lobbyInfo').innerHTML = `${S.size}v${S.size} · ${MV_LABEL[S.mv]} · ${S.tl ? 'runda ' + fmtTime(S.tl * 1000) : 'bez limitu czasu'} · boty: poziom ${S.lvl} (${Bots.LEVELS[S.lvl - 1].name})`;
+    $('#codeRow').hidden = G.local || S.pub;
+    $('#lobbyInfo').innerHTML = (S.pub ? `<b>Szybka gra</b> · szukam graczy, start za <span id="qpTimer"></span> (wolne miejsca zajmą boty)<br>` : '') + `${S.size}v${S.size} · ${MV_LABEL[S.mv]} · ${S.tl ? 'runda ' + fmtTime(S.tl * 1000) : 'bez limitu czasu'} · boty: poziom ${S.lvl} (${Bots.LEVELS[S.lvl - 1].name})`;
     $('#lobbyTeams').innerHTML = [0, 1].map(t => {
       const pl = S.pl.filter(p => p.t === t); const slots = [];
       for (let i = 0; i < S.size; i++) { const p = pl[i]; slots.push(p ? `<li class="${p.id === Net.me ? 'me' : ''}"><span class="av" style="background:${TEAM[t].col}">${esc(p.nk.slice(0, 1).toUpperCase())}</span><span>${esc(p.nk)}</span>${p.b ? `<em>bot · ${Bots.LEVELS[p.b - 1].name}</em>` : p.id === S.host ? '<em>gospodarz</em>' : ''}</li>` : `<li class="empty"><span class="av"></span><span>Wolne miejsce</span></li>`); }
@@ -361,19 +392,20 @@
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3800); }
   function renderSetup(kind) {
     $('#setupTitle').textContent = kind === 'solo' ? 'Gra solo' : 'Mecz drużynowy';
-    $('#sizeRow').hidden = kind === 'solo'; $('#botRow').hidden = kind === 'solo'; $('#friendsBtn').hidden = kind === 'solo';
+    $('#sizeRow').hidden = kind === 'solo'; $('#rivalRow').hidden = kind !== 'solo'; $('#friendsBtn').hidden = kind === 'solo';
     $('#setupGo').textContent = kind === 'solo' ? 'Graj' : 'Graj z botami';
     $('#setupGo').onclick = () => { readSetup(); if (kind === 'solo') startSolo(); else createTeamGame(false); };
     $('#friendsBtn').onclick = () => { readSetup(); if (!Net.room) { toast('Gra ze znajomymi nie jest jeszcze skonfigurowana (Firebase w config.js).'); return; } createTeamGame(true); };
     $('#friendsBtn').disabled = !Net.room;
-    for (const [name, val] of [['mv', prefs.mv], ['tl', String(prefs.tl)], ['size', String(prefs.size)]]) $$(`[name="${name}"]`).forEach(r => r.checked = r.value === val);
+    for (const [name, val] of [['mv', prefs.mv], ['tl', String(prefs.tl)], ['size', String(prefs.size)], ['rival', prefs.rival]]) $$(`[name="${name}"]`).forEach(r => r.checked = r.value === val);
     $('#lvl').value = prefs.lvl; lvlLabel();
     showScreen('setup');
   }
   function readSetup() {
     const v = n => { const r = $(`[name="${n}"]:checked`); return r ? r.value : null; };
-    prefs.mv = v('mv') || 'move'; prefs.tl = +(v('tl') || 0); prefs.size = +(v('size') || 2); prefs.lvl = +$('#lvl').value; savePrefs();
+    prefs.mv = v('mv') || 'move'; prefs.tl = +(v('tl') || 0); prefs.size = +(v('size') || 2); prefs.lvl = +$('#lvl').value; prefs.rival = v('rival') || 'none'; savePrefs();
   }
+  function readQuick() { const r = $('[name="qmv"]:checked'); prefs.qmv = r ? r.value : 'move'; savePrefs(); }
   function lvlLabel() { const l = +$('#lvl').value; $('#lvlName').textContent = `${l}. ${Bots.LEVELS[l - 1].name}`; $('#lvlDesc').textContent = Bots.LEVELS[l - 1].desc; $('#lvl').style.setProperty('--p', ((l - 1) / 9 * 100) + '%'); }
 
   function initUI() {
@@ -381,6 +413,8 @@
     $('#nick').addEventListener('input', e => { prefs.nick = e.target.value.trim().slice(0, 16); savePrefs(); if (Net.room) Net.room.presence({ nick: nick() }).catch(() => { }); if (Net.game) Net.game.presence({ nick: nick() }).catch(() => { }); });
     $('#soloCard').onclick = () => renderSetup('solo');
     $('#teamCard').onclick = () => renderSetup('team');
+    $$('[name="qmv"]').forEach(r => { r.checked = r.value === prefs.qmv; r.onchange = readQuick; });
+    $$('[data-qp]').forEach(b => b.onclick = () => quickPlay(+b.dataset.qp));
     $('#joinBtn').onclick = () => joinRoom($('#joinCode').value);
     $('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(e.target.value); });
     $('#lvl').addEventListener('input', lvlLabel);
@@ -399,10 +433,10 @@
     $('#mapSize').onclick = () => $('#mini').classList.toggle('big');
     document.addEventListener('keydown', e => {
       if ($('#game').hidden || e.target.tagName === 'INPUT') return;
-      if (G.S && G.S.mv === 'move') return; // Street View handles its own keys in move mode
+      if (e.key === ' ' || e.key === 'Enter') { submitGuess(); e.preventDefault(); return; }
+      if (G.S && G.S.mv === 'move') return; // Street View handles its own arrow keys in move mode
       if (e.key === 'ArrowLeft' || e.key === 'a') GTStreet.rotate(8);
       if (e.key === 'ArrowRight' || e.key === 'd') GTStreet.rotate(-8);
-      if (e.key === ' ' || e.key === 'Enter') { submitGuess(); e.preventDefault(); }
     });
     if (!GTStreet.init($('#view'))) { $('#noKey').hidden = false; }
     GTStreet.onView(v => { $('#needle').style.transform = `rotate(${-v.heading}deg)`; });
