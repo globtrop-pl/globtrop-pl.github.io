@@ -6,7 +6,8 @@
   const teamName = i => t('team.' + i);
   const lvlName = l => t('lvls')[l - 1][0], lvlDesc = l => t('lvls')[l - 1][1];
   const mvName = m => t('mv.' + m);
-  const HP = 6000, SOLO_ROUNDS = 5, AFTER_FIRST = 15000, RESULT_MS = 9000, QP_WAIT = 45000;
+  const HP = 6000, SOLO_ROUNDS = 5, AFTER_FIRST = 15000, RESULT_MS = 9000, QP_WAIT = 45000, COUNTDOWN = 3600, HURRY = 15000;
+  const makeMap = (el, o) => (root.google && google.maps && google.maps.Map && root.GTGMap) ? new GTGMap(el, o) : new GTMap(el, o);
 
   // ------------------------------------------------------------ local prefs
   const store = { get(k, d) { try { const v = localStorage.getItem('globtrop.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('globtrop.' + k, JSON.stringify(v)); } catch (e) { } } };
@@ -66,17 +67,17 @@
     G.finding = false; searching(false);
     if (!G.S) return;
     if (!loc) { G.retryAt = now() + 5000; toast(t('noPano')); return; }
-    const S = G.S; S.r = r; S.ph = 'round'; S.loc = loc; S.seed = loc.seed; S.rs = now(); S.dl = S.tl ? S.rs + S.tl * 1000 : 0; S.g = {}; S.res = null;
+    const S = G.S; S.r = r; S.ph = 'round'; S.loc = loc; S.seed = loc.seed; S.rs = now() + COUNTDOWN; S.dl = S.tl ? S.rs + S.tl * 1000 : 0; S.g = {}; S.res = null;
     G.botDue = {};
     for (const p of S.pl) if (p.b) { let due = S.rs + Bots.delay(p.b, S.seed ^ GT.hashStr(p.id)); if (S.dl) due = Math.min(due, S.dl - 1500); G.botDue[p.id] = due; }
     publish();
   }
   function multiplier(r) { return r <= 3 ? 1 : 1 + (r - 3) * 0.5; }
   function registerGuess(id, la, lo) {
-    const S = G.S; if (S.ph !== 'round' || S.g[id]) return false;
+    const S = G.S; if (S.ph !== 'round' || S.g[id] || now() < S.rs - 300) return false;
     const loc = S.loc; const km = GT.haversine(loc.lat, loc.lon, la, lo);
     S.g[id] = [+la.toFixed(4), +lo.toFixed(4), GT.score(km)];
-    if (S.mode === 'team' && S.pl.length > 1 && Object.keys(S.g).length === 1) { const tt = now() + AFTER_FIRST; if (!S.dl || S.dl > tt) S.dl = tt; }
+    if (S.mode === 'team' && S.pl.length > 1 && Object.keys(S.g).length === 1) { const tt = Math.max(now(), S.rs) + AFTER_FIRST; if (!S.dl || S.dl > tt) S.dl = tt; }
     return true;
   }
   function openRooms(size, mv) {
@@ -238,13 +239,13 @@
 
   // ------------------------------------------------------------ player actions
   function placePin(la, lo) {
-    const S = G.S; if (!S || S.ph !== 'round' || G.guessed) return;
+    const S = G.S; if (!S || S.ph !== 'round' || G.guessed || hostNow() < S.rs) return;
     G.myPin = [la, lo]; G.map.setPins([{ lat: la, lon: lo, color: myColor(), label: nick() }]);
     $('#guessBtn').disabled = false; $('#guessBtn').textContent = t('guess'); A.sfx('pin');
   }
   function myColor() { const p = me(); return G.S && G.S.mode === 'team' && p ? TEAM_COL[p.t] : '#f5c84c'; }
   function submitGuess() {
-    const S = G.S; if (!S || S.ph !== 'round' || G.guessed || !G.myPin) return;
+    const S = G.S; if (!S || S.ph !== 'round' || G.guessed || !G.myPin || hostNow() < S.rs) return;
     G.guessed = true; $('#guessBtn').disabled = true; $('#guessBtn').textContent = t('waiting'); A.sfx('guess');
     if (G.isHost) { if (registerGuess(Net.me, G.myPin[0], G.myPin[1])) publish(); }
     else if (Net.game) Net.game.presence({ guess: { r: S.r, s: S.seed, la: +G.myPin[0].toFixed(4), lo: +G.myPin[1].toFixed(4) } }).catch(() => { });
@@ -268,16 +269,37 @@
       showScreen('game');
       GTStreet.show(S.loc, S.mv);
       setMoveUi(S.mv);
+      if (!G.map) G.map = makeMap($('#miniMap'), { onPick: placePin, small: true });
       G.map.setPins([]); G.map.setLines([]); G.map.reset();
+      startCountdown();
       $('#guessBtn').disabled = true; $('#guessBtn').textContent = t('placePin');
       $('#resultOv').hidden = true; $('#endOv').hidden = true;
       G.endShown = false;
-      if (S.r === 1) A.sfx('start');
     }
     if (S.ph === 'round') { showScreen('game'); $('#resultOv').hidden = true; if (S.g[Net.me]) G.guessed = true; }
     if (S.ph === 'result' && G.lastShownResult !== S.r * 1e10 + S.seed) { G.lastShownResult = S.r * 1e10 + S.seed; showResult(true); }
     if (S.ph === 'end' && !G.endShown) { G.endShown = true; if ($('#resultOv').hidden) showResult(true); setTimeout(showEnd, S.mode === 'solo' ? 0 : 2500); }
     updateHud();
+  }
+  // 3-2-1 countdown before each round (timer and guessing start when it ends)
+  function startCountdown() {
+    const S = G.S; if (!S) return; const cd = $('#cd'), numEl = $('#cdNum'); let last = null;
+    $('#cdRound').textContent = S.mode === 'team' ? `${t('round')} ${S.r} · ×${multiplier(S.r).toFixed(1)}` : `${t('round')} ${S.r} / ${SOLO_ROUNDS}`;
+    cd.hidden = false; document.body.classList.add('counting');
+    cancelAnimationFrame(G.cdRaf);
+    const frame = () => {
+      if (!G.S || G.S.seed !== S.seed) { cd.hidden = true; document.body.classList.remove('counting'); return; }
+      const rem = S.rs - hostNow();
+      const label = rem > 0 ? String(Math.min(3, Math.ceil(rem / 1000))) : t('go');
+      if (label !== last) {
+        last = label; numEl.textContent = label; numEl.classList.toggle('go', rem <= 0);
+        numEl.classList.remove('pop'); void numEl.offsetWidth; numEl.classList.add('pop');
+        A.sfx(rem > 0 ? 'count' : 'go');
+      }
+      if (rem < -650) { cd.hidden = true; document.body.classList.remove('counting'); return; }
+      G.cdRaf = requestAnimationFrame(frame);
+    };
+    frame();
   }
   function setMoveUi(mv) { $('#moveCtl').hidden = mv !== 'move'; $('#zoomCtl').hidden = mv === 'nmpz'; $('#mvBadge').textContent = mvName(mv); }
   function fmtTime(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -305,16 +327,17 @@
     if (S && S.pub && S.ph === 'lobby') { const qt = $('#mmTimer'); if (qt) qt.textContent = t('mmStartIn', fmtTime(S.qs - hostNow())); const bar = $('#mmBar'); if (bar) bar.style.width = Math.max(0, Math.min(100, 100 - (S.qs - hostNow()) / QP_WAIT * 100)) + '%'; }
     const el = $('#timer'); if (!el || !S) return;
     if (S.ph === 'round' && S.dl) {
-      const left = S.dl - hostNow(); el.textContent = fmtTime(left); el.classList.toggle('urgent', left < 10500); el.hidden = false;
-      const sec = Math.ceil(left / 1000); if (left < 10500 && left > 0 && sec !== G.lastTick && !G.guessed) { G.lastTick = sec; A.sfx('tick'); }
-    } else el.hidden = true;
+      const left = Math.min(S.dl - hostNow(), S.dl - S.rs); el.textContent = fmtTime(left); const hurry = left < HURRY + 500 && left > 0 && hostNow() >= S.rs; el.classList.toggle('urgent', hurry); el.hidden = false;
+      document.body.classList.toggle('hurry', hurry);
+      const sec = Math.ceil(left / 1000); if (hurry && sec !== G.lastTick) { G.lastTick = sec; A.sfx(sec <= 5 ? 'tickHi' : 'tick'); const tm = $('#timer'); if (tm) { tm.classList.remove('beat'); void tm.offsetWidth; tm.classList.add('beat'); } }
+    } else { el.hidden = true; document.body.classList.remove('hurry'); }
   }
   function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function countryName(cc) { const c = W.byCode[cc]; return c ? c.name : cc; }
 
   function showResult(withSound) {
     const S = G.S; const loc = S.loc; const ov = $('#resultOv'); ov.hidden = false;
-    if (!G.bigMap) G.bigMap = new GTMap($('#resultMap'), {});
+    if (!G.bigMap) G.bigMap = makeMap($('#resultMap'), {});
     const pins = [{ kind: 'target', lat: loc.lat, lon: loc.lon }], lines = [], pts = [[loc.lat, loc.lon]];
     for (const p of S.pl) { const g = S.g[p.id]; if (!g) continue; const col = S.mode === 'team' ? TEAM_COL[p.t] : p.b ? '#3e8bff' : '#f5c84c'; pins.push({ lat: g[0], lon: g[1], color: col, label: p.nk }); lines.push({ a: [loc.lat, loc.lon], b: [g[0], g[1]], color: col }); pts.push([g[0], g[1]]); }
     G.bigMap.setPins(pins); G.bigMap.setLines(lines); requestAnimationFrame(() => { G.bigMap.resize(); G.bigMap.fit(pts, 70); });
@@ -504,7 +527,6 @@
     });
     if (!GTStreet.init($('#view'))) { $('#noKey').hidden = false; }
     GTStreet.onView(v => { $('#needle').style.transform = `rotate(${-v.heading}deg)`; });
-    G.map = new GTMap($('#miniMap'), { onPick: placePin });
     setInterval(tickTimer, 200);
     showScreen('home');
     renderOpenRooms();

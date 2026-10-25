@@ -3,6 +3,7 @@
   const plural = (n, one, few, many) => n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? few : many;
   const D = {
     pl: {
+      go: 'Start!',
       tagline: 'Prawdziwe panoramy Street View. Rozejrzyj się, przeczytaj znaki i zgadnij, gdzie stoisz.',
       nick: 'Twój nick', nickPh: 'np. Kartograf',
       solo: 'Solo', soloD: 'Pięć losowych miejsc na świecie. Do zdobycia 25 000 punktów.', soloTag: '5 rund',
@@ -40,6 +41,7 @@
       lvls: [['Turysta', 'Myli kontynenty. Klika gdzieś w świat.'], ['Wczasowicz', 'Zna kilka krajów z wakacji.'], ['Podróżnik', 'Często trafia w dobry region świata.'], ['Obieżyświat', 'Rozpoznaje stronę ruchu i pismo.'], ['Kartograf', 'Co drugi kraj trafia bezbłędnie.'], ['Nawigator', 'Zna słupki, linie i znaki większości krajów.'], ['Ekspert', 'Kraj prawie zawsze, region często.'], ['Mistrz', 'Trafia region i potrafi zgadnąć okolicę.'], ['Legenda', 'Czyta znaki i trafia w miasto obok.'], ['Wszechwiedzący', 'Wie prawie wszystko. Pudła rzadko.']],
     },
     en: {
+      go: 'Go!',
       tagline: 'Real Street View panoramas. Look around, read the signs and guess where you are.',
       nick: 'Your nickname', nickPh: 'e.g. Cartographer',
       solo: 'Solo', soloD: 'Five random places in the world. Up to 25,000 points.', soloTag: '5 rounds',
@@ -77,6 +79,7 @@
       lvls: [['Tourist', 'Mixes up continents. Clicks somewhere on Earth.'], ['Holidaymaker', 'Knows a few countries from holidays.'], ['Traveller', 'Often lands in the right part of the world.'], ['Globetrotter', 'Recognises driving side and script.'], ['Cartographer', 'Gets every other country right.'], ['Navigator', 'Knows bollards, lines and signs of most countries.'], ['Expert', 'Country almost always, region often.'], ['Master', 'Hits the region and can guess the area.'], ['Legend', 'Reads the signs and lands in the next town.'], ['Omniscient', 'Knows almost everything. Rarely misses.']],
     },
     de: {
+      go: 'Los!',
       tagline: 'Echte Street-View-Panoramen. Schau dich um, lies die Schilder und rate, wo du bist.',
       nick: 'Dein Spitzname', nickPh: 'z. B. Kartograf',
       solo: 'Solo', soloD: 'Fünf zufällige Orte auf der Welt. Bis zu 25.000 Punkte.', soloTag: '5 Runden',
@@ -114,6 +117,7 @@
       lvls: [['Tourist', 'Verwechselt Kontinente.'], ['Urlauber', 'Kennt ein paar Länder aus dem Urlaub.'], ['Reisender', 'Trifft oft die richtige Weltregion.'], ['Weltenbummler', 'Erkennt Fahrseite und Schrift.'], ['Kartograf', 'Jedes zweite Land sitzt.'], ['Navigator', 'Kennt Leitpfosten, Linien und Schilder.'], ['Experte', 'Land fast immer, Region oft.'], ['Meister', 'Trifft die Region und oft die Gegend.'], ['Legende', 'Liest Schilder und landet im Nachbarort.'], ['Allwissend', 'Weiß fast alles. Liegt selten daneben.']],
     },
     es: {
+      go: '¡Ya!',
       tagline: 'Panoramas reales de Street View. Mira a tu alrededor, lee las señales y adivina dónde estás.',
       nick: 'Tu apodo', nickPh: 'p. ej. Cartógrafo',
       solo: 'Solo', soloD: 'Cinco lugares al azar del mundo. Hasta 25 000 puntos.', soloTag: '5 rondas',

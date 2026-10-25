@@ -147,7 +147,10 @@
       case 'guess': [523, 659, 784].forEach((f, i) => osc('triangle', f, t + i * 0.06, 0.12, 0.2, { ...B, s: 0.3 })); break;
       case 'score': { const p = Math.max(0, Math.min(5000, arg || 0)), n = 1 + Math.round(p / 1000); const base = p > 4500 ? 72 : 64; for (let i = 0; i < n; i++) osc('triangle', midi(base + [0, 4, 7, 12, 16, 19][i]), t + i * 0.08, 0.18, 0.18, { ...B, s: 0.4, r: 0.2 }); if (p < 500) osc('sawtooth', 180, t, 0.4, 0.12, { ...B, glide: 90, cut: 900 }); break; }
       case 'damage': { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.4); g.gain.setValueAtTime(0.8, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5); o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.55); noise(t, 0.3, 0.35, 'lowpass', 900, sfxBus); break; }
-      case 'tick': osc('square', 1500, t, 0.02, 0.06, { ...B, s: 0 }); break;
+      case 'tick': osc('square', 1200, t, 0.03, 0.07, { ...B, s: 0 }); osc('sine', 80, t, 0.12, 0.25, { ...B, s: 0, glide: 50 }); break;
+      case 'tickHi': osc('square', 1760, t, 0.04, 0.09, { ...B, s: 0 }); osc('sine', 90, t, 0.14, 0.35, { ...B, s: 0, glide: 50 }); break;
+      case 'count': osc('square', 440, t, 0.16, 0.12, { ...B, s: 0.6, cut: 2400 }); osc('sine', 220, t, 0.2, 0.2, { ...B, s: 0.3 }); break;
+      case 'go': osc('square', 880, t, 0.35, 0.13, { ...B, s: 0.7, cut: 3200 }); osc('triangle', 1320, t + 0.02, 0.3, 0.1, { ...B, s: 0.5 }); osc('sine', 110, t, 0.3, 0.3, { ...B, s: 0, glide: 55 }); break;
       case 'join': osc('sine', 587, t, 0.1, 0.18, { ...B, s: 0.4 }); osc('sine', 880, t + 0.09, 0.14, 0.18, { ...B, s: 0.4 }); break;
       case 'start': [392, 523, 659, 784].forEach((f, i) => osc('square', f, t + i * 0.09, 0.14, 0.09, { ...B, s: 0.5, cut: 3000 })); break;
       case 'win': [523, 659, 784, 1046, 784, 1046].forEach((f, i) => osc('triangle', f, t + i * 0.12, i === 5 ? 0.6 : 0.14, 0.22, { ...B, s: 0.5, r: 0.3 })); break;
